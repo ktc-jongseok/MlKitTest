@@ -11,14 +11,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -29,17 +24,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import coil.compose.rememberImagePainter
 import coil.request.ImageRequest
 import com.example.mlkittest.ui.theme.MlKitTestTheme
 import com.google.mlkit.vision.common.InputImage
@@ -60,54 +52,55 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-// 이미지에서 라벨을 추출하는 함수
+// 画像からラベルを抽出するFunction
 fun calculateSimilarityAndDisplayResult(
     uri1: Uri,
     uri2: Uri,
     context: Context,
-    similarityResult : (Double) -> Unit
+    similarityResult : (Pair<Double, List<String>>) -> Unit
 ) {
-    // ML Kit 이미지 라벨링을 사용하여 각 이미지에 대한 라벨링 수행
-    // 예시 코드는 이미지 라벨링과 유사도 계산의 기본적인 흐름을 보여줍니다.
-    // 실제 구현에서는 Firebase ML Kit 문서를 참조하여 라벨링을 수행하고 결과를 처리해야 합니다.
+    // ML Kit イメージラベリングを使用した各イメージのラベリングの実行
+    // 画像ラベリングと類似度の計算
 
     val image1 = InputImage.fromFilePath(context, uri1)
     val image2 = InputImage.fromFilePath(context, uri2)
     val labeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
 
-    // 이미지 1 라벨링
+    // Image 1 ラベリング
     labeler.process(image1)
         .addOnSuccessListener { labels1 ->
-            // 이미지 2 라벨링
+            // Image 2 ラベリング
             labeler.process(image2)
                 .addOnSuccessListener { labels2 ->
-                    // 유사도 계산
+                    // 類似度の計算
                     val similarity = calculateSimilarity(labels1, labels2)
-                    // 유사도 결과를 사용자에게 표시, 예: Toast 메시지, UI 업데이트 등
+                    // 類似度の結果を表示
                     similarityResult(similarity)
                 }
         }
         .addOnFailureListener { e ->
-            // 오류 처리
+            // エラーの処理
             Toast.makeText(context, "Error Message: ${e.message}", Toast.LENGTH_LONG).show()
         }
 }
 
-// 두 라벨 리스트의 유사도를 계산하는 함수
-fun calculateSimilarity(labels1: List<ImageLabel>, labels2: List<ImageLabel>): Double {
-    // 라벨 텍스트만 추출
+// 2つのラベルリストの類似度を計算するFunction
+fun calculateSimilarity(
+    labels1: List<ImageLabel>,
+    labels2: List<ImageLabel>
+): Pair<Double, List<String>> {
+    // ラベルテキストのみ抽出
     val texts1 = labels1.map { it.text }
     val texts2 = labels2.map { it.text }
 
-    // 공통 요소 찾기
+    // 共通要素を探す
     val commonLabels = texts1.filter {
         Log.e("Lables","commonLabels : $it")
         it in texts2
-    }.size
+    }
 
-
-    // 유사도 계산 (공통 요소의 수를 두 리스트 길이의 합으로 나눔)
-    return (commonLabels.toDouble() / (texts1.size + texts2.size - commonLabels)) * 100
+    // 類似度の計算（共通要素の数を2つのリスト長の合計で除算）
+    return Pair((commonLabels.size.toDouble() / (texts1.size + texts2.size - commonLabels.size)) * 100, commonLabels)
 }
 
 fun resizeImage(context: Context, imageUri: Uri, reqWidth: Int, reqHeight: Int): Bitmap? {
@@ -118,16 +111,16 @@ fun resizeImage(context: Context, imageUri: Uri, reqWidth: Int, reqHeight: Int):
     var finalWidth = reqWidth
     var finalHeight = reqHeight
 
-    // 비율을 유지하면서 크기 조정
+    // 比率を維持しながらサイズ変更
     if (originalBitmap.width > originalBitmap.height) {
-        // 가로가 세로보다 길 경우
+        // 横が縦よりも長い場合
         finalHeight = (finalWidth / aspectRatio).toInt()
     } else {
-        // 세로가 가로보다 길 경우
+        // 縦が横より長い場合
         finalWidth = (finalHeight * aspectRatio).toInt()
     }
 
-    // 이미지 리사이징
+    // イメージリサイジング
     return Bitmap.createScaledBitmap(originalBitmap, finalWidth, finalHeight, true)
 }
 
@@ -137,19 +130,20 @@ fun ImageComparisonScreen() {
     var imageUri1 by remember { mutableStateOf<Uri?>(null) }
     var imageUri2 by remember { mutableStateOf<Uri?>(null) }
     var resultText by remember { mutableStateOf<String?>(null) }
+    var commonTags by remember { mutableStateOf<String?>(null) }
 
-    // 이미지 선택 결과 처리를 위한 런처
+    // 画像選択結果処理のためのランチャー
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        // imageUri1 또는 imageUri2에 URI 할당하는 로직 필요
         if (imageUri1 == null) {
             imageUri1 = uri
         } else if (imageUri2 == null) {
             imageUri2 = uri
-            // 이미지 두 장이 모두 선택되면 유사도 계산 함수 호출
+            // 両方の画像を選択した場合、類似度計算関数を呼び出す
             imageUri1?.let { uri1 ->
                 imageUri2?.let { uri2 ->
                     calculateSimilarityAndDisplayResult(uri1, uri2, context) { similarity ->
-                        resultText = similarity.toString()
+                        resultText = similarity.first.toString()
+                        commonTags = similarity.second.joinToString(separator = "-")
                     }
                 }
             }
@@ -170,7 +164,7 @@ fun ImageComparisonScreen() {
         item(imageUri1) {
             imageUri1?.let { uri ->
                 AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
+                    model = ImageRequest.Builder(context)
                         .data(resizeImage(context, uri, 800, 600))
                         .crossfade(true)
                         .build(),
@@ -192,7 +186,7 @@ fun ImageComparisonScreen() {
         item(imageUri2) {
             imageUri2?.let { uri ->
                 AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
+                    model = ImageRequest.Builder(context)
                         .data(resizeImage(context, uri, 800, 600))
                         .crossfade(true)
                         .build(),
@@ -208,6 +202,7 @@ fun ImageComparisonScreen() {
                 imageUri1 = null
                 imageUri2 = null
                 resultText = null
+                commonTags = null
             }) {
                 Text("Clear Images")
             }
@@ -222,7 +217,16 @@ fun ImageComparisonScreen() {
                     textAlign = TextAlign.Center
                 )
             }
-        }
 
+            commonTags?.let {
+                Text(
+                    text = "Tags : $it",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    color = Color.DarkGray
+                )
+            }
+        }
     }
 }
